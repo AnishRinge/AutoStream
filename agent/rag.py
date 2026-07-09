@@ -9,11 +9,38 @@ def get_relevant_info(query):
     query = query.lower()
 
     # Policy related
-    if any(word in query for word in ["policy", "policies", "refund", "support"]):
+    policy_keywords = [
+        "policy",
+        "policies",
+        "refund",
+        "support",
+        "money back",
+        "contact",
+        "help",
+        "cancel"
+    ]
+
+    if any(word in query for word in policy_keywords):
         return data["policies"]
     
     # Pricing related
-    if any(word in query for word in ["price", "pricing", "plan", "cost"]):
+    pricing_keywords = [
+        "price",
+        "pricing",
+        "plan",
+        "plans",
+        "subscription",
+        "subscriptions",
+        "cost",
+        "video",
+        "videos",
+        "caption",
+        "captions",
+        "4k",
+        "720p"
+    ]
+
+    if any(word in query for word in pricing_keywords):
         return data["pricing"]
 
-    return "Sorry, I couldn't find relevant information."
+    return None

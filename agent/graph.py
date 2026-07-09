@@ -10,11 +10,11 @@ from agent.tools import mock_lead_capture
 
 
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel("gemini-1.5-flash")
+model = genai.GenerativeModel("gemini-2.5-flash")
 
 
 class AgentState(TypedDict):
-    input: str
+    input: str  
     response: NotRequired[str]
     intent: NotRequired[str]
     lead_stage: NotRequired[str | None]
@@ -27,11 +27,12 @@ def generate_grounded_response(prompt, fallback_text):
     try:
         response = model.generate_content(
             prompt,
-            request_options={"timeout": 5},
+            request_options={"timeout": 20},
         )
         text = getattr(response, "text", "").strip()
         return text or fallback_text
-    except Exception:
+    except Exception as e:
+        print("Gemini Error:", e)
         return fallback_text
 
 
@@ -49,14 +50,29 @@ def policy_node(state):
             f"- {data['refund']}\n"
             f"- {data['support']}"
         )
-        prompt = (
-            "You are an assistant for AutoStream, a SaaS video editing product.\n"
-            "Answer the user's policy question using only the policy facts below.\n"
-            "Do not invent any details.\n\n"
-            f"User question: {state['input']}\n"
-            f"Refund policy: {data['refund']}\n"
-            f"Support policy: {data['support']}\n"
-        )
+        context = f"""
+        Refund Policy:
+        {data['refund']}
+
+        Support Policy:
+        {data['support']}
+        """
+
+        prompt = f"""
+        You are AutoStream's AI assistant.
+
+        Answer ONLY using the provided context.
+        Do not use outside knowledge.
+        If the answer is not present in the context, reply exactly:
+
+        "I don't have that information."
+
+        Context:
+        {context}
+
+        Question:
+        {state['input']}
+        """
         state["response"] = generate_grounded_response(prompt, fallback_text)
     else:
         state["response"] = "Sorry, I couldn't find policy details."
@@ -78,17 +94,33 @@ def pricing_node(state):
             "- 4K resolution\n"
             "- AI captions"
         )
-        prompt = (
-            "You are an assistant for AutoStream, a SaaS video editing product.\n"
-            "Answer the user's pricing question using only the pricing facts below.\n"
-            "Keep it concise, helpful, and grounded in the provided data.\n"
-            "Do not invent discounts, trials, or extra features.\n\n"
-            f"User question: {state['input']}\n"
-            f"Basic plan price: {data['basic']['price']}\n"
-            f"Basic plan features: {', '.join(data['basic']['features'])}\n"
-            f"Pro plan price: {data['pro']['price']}\n"
-            f"Pro plan features: {', '.join(data['pro']['features'])}\n"
-        )
+        context = f"""
+        Basic Plan
+        Price: {data['basic']['price']}
+        Features:
+        {chr(10).join("- " + feature for feature in data['basic']['features'])}
+
+        Pro Plan
+        Price: {data['pro']['price']}
+        Features:
+        {chr(10).join("- " + feature for feature in data['pro']['features'])}
+        """
+
+        prompt = f"""
+        You are AutoStream's AI assistant.
+
+        Answer ONLY using the provided context.
+        Do not use outside knowledge.
+        If the answer is not present in the context, reply exactly:
+
+        "I don't have that information."
+
+        Context:
+        {context}
+
+        Question:
+        {state['input']}
+        """
         state["response"] = generate_grounded_response(prompt, fallback_text)
     else:
         state["response"] = "Sorry, I couldn't find pricing details."
@@ -144,14 +176,14 @@ def fallback_node(state):
     if "thank" in query:
         state["response"] = "You're welcome! Let me know if you have any other questions."
     else:
-        fallback_text = "I'm not sure how to help with that. Could you please clarify?"
-        prompt = (
-            "You are a helpful assistant for AutoStream, a SaaS video editing product.\n"
-            "The user said something outside the known pricing, policy, and lead-capture flow.\n"
-            "Respond briefly, politely, and ask a clarifying question.\n\n"
-            f"User message: {state['input']}\n"
+        state["response"] = (
+            "I don't have information about that.\n\n"
+            "I can help you with:\n"
+            "- Pricing and plans\n"
+            "- Refund policy\n"
+            "- Support policy\n"
+            "- Getting started with AutoStream"
         )
-        state["response"] = generate_grounded_response(prompt, fallback_text)
 
     return state
 
@@ -163,15 +195,42 @@ def router(state):
     if state.get("lead_stage"):
         return "lead_collect"
 
-    if any(word in query for word in ["policy", "policies", "refund", "support"]):
+    policy_keywords = [
+        "policy",
+        "policies",
+        "refund",
+        "support",
+        "money back",
+        "contact",
+        "help",
+        "cancel"
+    ]
+
+    if any(word in query for word in policy_keywords):
         return "policy"
 
     if intent == "high_intent":
         return "lead"
 
-    if any(word in query for word in ["price", "pricing", "plan", "cost"]):
-        return "pricing"
+    pricing_keywords = [
+        "price",
+        "pricing",
+        "plan",
+        "plans",
+        "subscription",
+        "subscriptions",
+        "cost",
+        "video",
+        "videos",
+        "caption",
+        "captions",
+        "4k",
+        "720p"
+    ]
 
+    if any(word in query for word in pricing_keywords):
+        return "pricing"
+    
     if intent == "greeting":
         return "greeting"
 
