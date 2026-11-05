@@ -3,3 +3,9 @@ venv/
 __pycache__/
 *.pyc
 *.mp4
+
+# Local/generated lead database (Phase 5)
+data/leads.db
+data/*.db
+data/*.sqlite
+data/*.sqlite3
